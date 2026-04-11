@@ -24,11 +24,11 @@ import time
 import hmac
 import secrets
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 import redis
 import requests
-from flask import Flask, abort, jsonify, redirect, request, session
+from flask import Flask, abort, jsonify, make_response, redirect, request, session
 from authlib.jose import JsonWebKey, jwt
 
 logging.basicConfig(level=logging.INFO)
@@ -101,6 +101,26 @@ def _pop(prefix: str, key: str) -> dict | None:
 def _get(prefix: str, key: str) -> dict | None:
     raw = _redis.get(f"{prefix}:{key}")
     return json.loads(raw) if raw else None
+
+# ── Browser session (for Caddy forward_auth gate) ─────────────────────────
+
+_SESSION_TTL = int(os.environ.get("SESSION_TTL", 28800))  # 8 hours
+
+def _set_browser_session(identity: dict, response) -> None:
+    """Attach a Redis-backed session cookie to response."""
+    token = secrets.token_urlsafe(32)
+    _store("session", token, identity, ttl=_SESSION_TTL)
+    response.set_cookie(
+        "ym_session", token,
+        max_age=_SESSION_TTL,
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+    )
+
+def _get_browser_session() -> dict | None:
+    token = request.cookies.get("ym_session")
+    return _get("session", token) if token else None
 
 
 def _ym_exchange_code(code: str) -> dict:
@@ -241,18 +261,28 @@ def callback():
         log.exception("YM auth exchange failed: %s", exc)
         abort(502, "upstream authentication error")
 
-    oidc_code = secrets.token_urlsafe(32)
-    _store("code", oidc_code, {
-        **identity,
-        "nonce":        session.pop("oidc_nonce", ""),
-        "redirect_uri": session.get("oidc_redirect_uri", ""),  # bound for token validation
-    }, ttl=300)
-
     pretix_redirect_uri = session.pop("oidc_redirect_uri", "")
-    state               = session.pop("oidc_state", "")
+    next_url            = session.pop("oidc_next", "")
 
-    sep = "&" if "?" in pretix_redirect_uri else "?"
-    return redirect(f"{pretix_redirect_uri}{sep}code={oidc_code}&state={state}")
+    if pretix_redirect_uri:
+        # OIDC flow (Pretix login button) — issue auth code and redirect back
+        oidc_code = secrets.token_urlsafe(32)
+        _store("code", oidc_code, {
+            **identity,
+            "nonce":        session.pop("oidc_nonce", ""),
+            "redirect_uri": pretix_redirect_uri,
+        }, ttl=300)
+        state = session.pop("oidc_state", "")
+        sep   = "&" if "?" in pretix_redirect_uri else "?"
+        resp  = make_response(redirect(f"{pretix_redirect_uri}{sep}code={oidc_code}&state={state}"))
+    else:
+        # Direct access flow (Caddy gate) — redirect to original URL
+        session.pop("oidc_nonce", None)
+        session.pop("oidc_state", None)
+        resp = make_response(redirect(next_url or "/"))
+
+    _set_browser_session(identity, resp)
+    return resp
 
 
 # ── Token endpoint ─────────────────────────────────────────────────────────
@@ -334,6 +364,43 @@ def userinfo():
         "email": entry["email"],
         "name":  entry["name"],
     })
+
+
+# ── Caddy forward_auth gate ────────────────────────────────────────────────
+
+@app.route(f"{URL_PREFIX}/check")
+def check():
+    """
+    Called by Caddy forward_auth on every gated request.
+    200 → let through. 302 → send browser to YM login first.
+    """
+    identity = _get_browser_session()
+    if identity:
+        resp = make_response("", 200)
+        resp.headers["X-YM-Sub"]   = identity.get("sub", "")
+        resp.headers["X-YM-Email"] = identity.get("email", "")
+        return resp
+
+    # Preserve the original URL so we can return after login
+    next_url = request.headers.get("X-Forwarded-Uri", "/")
+    return redirect(f"{URL_PREFIX}/login?next={quote(next_url)}", 302)
+
+
+@app.route(f"{URL_PREFIX}/login")
+def login():
+    """Initiate YM auth for direct access (not the OIDC code flow)."""
+    session["oidc_next"]         = request.args.get("next", "/")
+    session["oidc_redirect_uri"] = ""  # signals direct-access flow to /callback
+    session["oidc_nonce"]        = ""
+    session["oidc_state"]        = ""
+
+    ym_auth_url = (
+        f"{YM_SITE_URL}/lock.aspx"
+        f"?app_id={YM_APP_ID}"
+        f"&redirect_uri={MY_CALLBACK}"
+        f"&scope=basic_profile"
+    )
+    return redirect(ym_auth_url)
 
 
 # ── Health check ───────────────────────────────────────────────────────────

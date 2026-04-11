@@ -1,0 +1,22 @@
+{% extends "pretixcontrol/event/settings_base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+{% block title %}{% trans "Member Gate" %}{% endblock %}
+{% block inside %}
+<h1>{% trans "Member Gate" %}</h1>
+<p>{% blocktrans trimmed %}
+    Customers who add the configured variation to their cart will be required
+    to log in before they can complete checkout.
+{% endblocktrans %}</p>
+<form action="" method="post" class="form-horizontal">
+    {% csrf_token %}
+    {% bootstrap_form_errors form %}
+    {% bootstrap_field form.member_gate_variation_id layout="horizontal" %}
+    {% bootstrap_field form.member_gate_login_url layout="horizontal" %}
+    <div class="form-group submit-group">
+        <button type="submit" class="btn btn-primary btn-save">
+            {% trans "Save" %}
+        </button>
+    </div>
+</form>
+{% endblock %}

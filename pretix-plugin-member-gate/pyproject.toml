@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pretix-plugin-member-gate"
+version = "1.0.0"
+description = "Restricts designated ticket variations to logged-in customers"
+requires-python = ">=3.11"
+
+[project.entry-points."pretix.plugin"]
+pretix_member_gate = "pretix_member_gate:MemberGateApp"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pretix_member_gate*"]
+
+[tool.setuptools.package-data]
+pretix_member_gate = ["templates/**/*"]

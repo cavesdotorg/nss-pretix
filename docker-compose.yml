@@ -10,7 +10,9 @@ services:
       - caddy_data:/data
 
   pretix:
-    image: pretix/standalone:2026.3.1
+    build:
+      context: .
+      dockerfile: Dockerfile.pretix
     restart: unless-stopped
     volumes:
       - pretix_data:/data

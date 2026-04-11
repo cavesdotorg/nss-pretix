@@ -1,0 +1,5 @@
+FROM pretix/standalone:2026.3.1
+USER root
+COPY pretix-plugin-member-gate/ /tmp/plugin/
+RUN pip install --no-cache-dir /tmp/plugin/ && rm -rf /tmp/plugin/
+USER pretixuser
