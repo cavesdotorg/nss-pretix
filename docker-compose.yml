@@ -1,0 +1,44 @@
+services:
+  caddy:
+    image: caddy:latest
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ~/secrets/pretix/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+
+  pretix:
+    image: pretix/standalone:2026.3.1
+    restart: unless-stopped
+    volumes:
+      - pretix_data:/data
+      - ~/secrets/pretix/pretix.cfg:/etc/pretix/pretix.cfg:ro
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    env_file: ~/secrets/pretix/db.env
+    environment:
+      POSTGRES_DB: pretix_db
+      POSTGRES_USER: pretix_user
+    volumes:
+      - db_data:/var/lib/postgresql/18/docker
+
+  valkey:
+    image: valkey/valkey:9
+    restart: unless-stopped
+
+  ym-oidc:
+    build: ./ym-oidc
+    restart: unless-stopped
+    env_file: ~/secrets/pretix/ym-oidc.env
+    volumes:
+      - ~/secrets/pretix/oidc.key:/secrets/oidc.key:ro
+      - ~/secrets/pretix/oidc.pub:/secrets/oidc.pub:ro
+
+volumes:
+  caddy_data:
+  pretix_data:
+  db_data:
