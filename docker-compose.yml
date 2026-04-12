@@ -1,7 +1,10 @@
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:2.11.2
     restart: always
+    labels:
+      - wud.watch=true
+      - wud.tag.include=^2\.\d+\.\d+$$
     ports:
       - "80:80"
       - "443:443"
@@ -10,17 +13,21 @@ services:
       - caddy_data:/data
 
   pretix:
-    build:
-      context: .
-      dockerfile: Dockerfile.pretix
+    image: ghcr.io/paulwalko/nss-pretix:latest
     restart: unless-stopped
+    labels:
+      - wud.watch=true
+      - wud.tag.include=^\d+\.3\.\d+-\d+$$
     volumes:
       - pretix_data:/data
       - ~/secrets/pretix/pretix.cfg:/etc/pretix/pretix.cfg:ro
 
   db:
-    image: postgres:18
+    image: postgres:18.3
     restart: unless-stopped
+    labels:
+      - wud.watch=true
+      - wud.tag.include=^18\.\d+(\.\d+)?$$
     env_file: ~/secrets/pretix/db.env
     environment:
       POSTGRES_DB: pretix_db
@@ -29,8 +36,11 @@ services:
       - db_data:/var/lib/postgresql/18/docker
 
   valkey:
-    image: valkey/valkey:9
+    image: valkey/valkey:9.0.3
     restart: unless-stopped
+    labels:
+      - wud.watch=true
+      - wud.tag.include=^9\.\d+\.\d+$$
 
   ym-oidc:
     build: ./ym-oidc
@@ -39,6 +49,23 @@ services:
     volumes:
       - ~/secrets/pretix/oidc.key:/secrets/oidc.key:ro
       - ~/secrets/pretix/oidc.pub:/secrets/oidc.pub:ro
+
+  wud:
+    image: ghcr.io/getwud/wud:8
+    restart: unless-stopped
+    labels:
+      - wud.watch=true
+      - wud.tag.include=^8\.\d+$$
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /home/ubuntu/nss-pretix/docker-compose.yml:/workspace/docker-compose.yml
+    environment:
+      WUD_WATCHER_LOCAL_CRON: "0 3 * * *"
+      WUD_STORE_REDIS_URI: "redis://valkey:6379/4"
+      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "false"
+      WUD_TRIGGER_DOCKERCOMPOSE_MAIN_FILE: /workspace/docker-compose.yml
+      WUD_TRIGGER_DOCKERCOMPOSE_MAIN_PRUNE: "true"
+      WUD_TRIGGER_DOCKERCOMPOSE_MAIN_BACKUP: "true"
 
 volumes:
   caddy_data:
