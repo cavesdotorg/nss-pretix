@@ -15,20 +15,24 @@ class MemberGateStep(BaseCheckoutFlowStep):
     priority = 48
 
     def is_applicable(self, request):
-        variation_id = request.event.settings.get('member_gate_variation_id')
-        if not variation_id:
+        variation_ids = request.event.settings.get('member_gate_variation_ids', as_type=list)
+        if not variation_ids:
             return False
-        return get_cart(request).filter(variation_id=variation_id).exists()
+        return get_cart(request).filter(variation_id__in=variation_ids).exists()
 
     def is_completed(self, request, warn=False):
-        return bool(request.customer)
+        if not request.customer:
+            return False
+        required_provider = request.event.settings.get('member_gate_required_provider')
+        if required_provider:
+            return str(request.customer.provider_id) == str(required_provider)
+        return True
 
     def get(self, request):
         self.request = request
         if self.is_completed(request):
             return HttpResponseRedirect(self.get_next_url(request))
 
-        # Fall back to forcing login if somehow reached without a customer session.
         login_url = (
             request.event.settings.get('member_gate_login_url') or
             reverse(

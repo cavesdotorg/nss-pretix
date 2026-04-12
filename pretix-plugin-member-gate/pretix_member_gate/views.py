@@ -8,9 +8,18 @@ from pretix.control.views.event import EventSettingsFormView, EventSettingsViewM
 
 
 class MemberGateSettingsForm(SettingsForm):
-    member_gate_variation_id = forms.ChoiceField(
-        label=_("Member-price variation"),
-        help_text=_("Customers must be logged in to add this variation to their cart."),
+    member_gate_variation_ids = forms.MultipleChoiceField(
+        label=_("Member-price variations"),
+        help_text=_("Customers must be logged in to add any of these variations to their cart."),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+    )
+    member_gate_required_provider = forms.ChoiceField(
+        label=_("Required login provider"),
+        help_text=_(
+            "Require login via a specific SSO provider. "
+            "Leave blank to allow any logged-in customer."
+        ),
         required=False,
     )
     member_gate_login_url = forms.CharField(
@@ -25,11 +34,17 @@ class MemberGateSettingsForm(SettingsForm):
     def __init__(self, *args, **kwargs):
         event = kwargs.pop('event')
         super().__init__(*args, **kwargs)
-        choices = [('', _('— not configured —'))]
+
+        variation_choices = []
         for item in event.items.prefetch_related('variations').order_by('name'):
             for variation in item.variations.all():
-                choices.append((str(variation.pk), f'{item.name} – {variation.value}'))
-        self.fields['member_gate_variation_id'].choices = choices
+                variation_choices.append((str(variation.pk), f'{item.name} – {variation.value}'))
+        self.fields['member_gate_variation_ids'].choices = variation_choices
+
+        provider_choices = [('', _('— any provider —'))]
+        for p in event.organizer.sso_providers.filter(is_active=True).order_by('name'):
+            provider_choices.append((str(p.pk), p.name))
+        self.fields['member_gate_required_provider'].choices = provider_choices
 
 
 class MemberGateSettings(EventSettingsViewMixin, EventSettingsFormView):
