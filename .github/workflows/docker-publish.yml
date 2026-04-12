@@ -15,24 +15,22 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Extract pretix version
         id: version
         run: |
           echo "pretix_version=$(grep 'FROM pretix/standalone' Dockerfile.pretix | sed 's/.*standalone://')" >> $GITHUB_OUTPUT
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: Dockerfile.pretix
           push: true
-          tags: |
-            ghcr.io/paulwalko/nss-pretix:${{ steps.version.outputs.pretix_version }}-${{ github.run_number }}
-            ghcr.io/paulwalko/nss-pretix:latest
+          tags: ghcr.io/paulwalko/nss-pretix:${{ steps.version.outputs.pretix_version }}-${{ github.run_number }}

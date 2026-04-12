@@ -13,7 +13,7 @@ services:
       - caddy_data:/data
 
   pretix:
-    image: ghcr.io/paulwalko/nss-pretix:latest
+    image: ghcr.io/paulwalko/nss-pretix:2026.3.1-1
     restart: unless-stopped
     labels:
       - wud.watch=true
