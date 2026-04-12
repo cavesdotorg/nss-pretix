@@ -15,10 +15,17 @@ class MemberGateStep(BaseCheckoutFlowStep):
     priority = 48
 
     def is_applicable(self, request):
-        variation_ids = request.event.settings.get('member_gate_variation_ids', as_type=list)
-        if not variation_ids:
+        from django.db.models import Q
+        variation_ids = request.event.settings.get('member_gate_variation_ids', as_type=list) or []
+        item_ids = request.event.settings.get('member_gate_item_ids', as_type=list) or []
+        if not variation_ids and not item_ids:
             return False
-        return get_cart(request).filter(variation_id__in=variation_ids).exists()
+        q = Q()
+        if variation_ids:
+            q |= Q(variation_id__in=variation_ids)
+        if item_ids:
+            q |= Q(item_id__in=item_ids)
+        return get_cart(request).filter(q).exists()
 
     def is_completed(self, request, warn=False):
         if not request.customer:

@@ -8,9 +8,15 @@ from pretix.control.views.event import EventSettingsFormView, EventSettingsViewM
 
 
 class MemberGateSettingsForm(SettingsForm):
+    member_gate_item_ids = forms.MultipleChoiceField(
+        label=_("Member-only products"),
+        help_text=_("Customers must be logged in to purchase any of these products (regardless of variation)."),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+    )
     member_gate_variation_ids = forms.MultipleChoiceField(
         label=_("Member-price variations"),
-        help_text=_("Customers must be logged in to add any of these variations to their cart."),
+        help_text=_("Customers must be logged in to add any of these specific variations to their cart."),
         widget=forms.CheckboxSelectMultiple,
         required=False,
     )
@@ -35,10 +41,13 @@ class MemberGateSettingsForm(SettingsForm):
         event = kwargs.pop('event')
         super().__init__(*args, **kwargs)
 
+        item_choices = []
         variation_choices = []
         for item in event.items.prefetch_related('variations').order_by('name'):
+            item_choices.append((str(item.pk), str(item.name)))
             for variation in item.variations.all():
                 variation_choices.append((str(variation.pk), f'{item.name} – {variation.value}'))
+        self.fields['member_gate_item_ids'].choices = item_choices
         self.fields['member_gate_variation_ids'].choices = variation_choices
 
         provider_choices = [('', _('— any provider —'))]

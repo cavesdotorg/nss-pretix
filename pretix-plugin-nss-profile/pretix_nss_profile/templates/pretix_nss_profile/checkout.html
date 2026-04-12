@@ -1,0 +1,39 @@
+{% extends "pretixpresale/event/checkout_base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+{% block inner %}
+<h2>{% trans "Member Profile" %}</h2>
+<p>{% blocktrans trimmed %}
+    Please confirm or update your membership information below.
+    Fields marked as read-only are pulled directly from your YM membership record.
+{% endblocktrans %}</p>
+<form class="form-horizontal" method="post" action="">
+    {% csrf_token %}
+    {% bootstrap_form_errors form %}
+    <div class="panel panel-default">
+        <div class="panel-body questions-form">
+            {% bootstrap_field form.nss_number layout="horizontal" %}
+            {% bootstrap_field form.nss_name layout="horizontal" %}
+            {% bootstrap_field form.nss_grotto layout="horizontal" %}
+            {% bootstrap_field form.nss_expiration layout="horizontal" %}
+            {% bootstrap_field form.nss_address layout="horizontal" %}
+        </div>
+    </div>
+    <div class="row checkout-button-row">
+        {% if has_prev %}
+        <div class="col-md-4 col-xs-12">
+            <a href="{{ prev_url }}" class="btn btn-block btn-default btn-lg">
+                {% trans "Back" %}
+            </a>
+        </div>
+        <div class="col-md-4 col-md-offset-4 col-xs-12">
+        {% else %}
+        <div class="col-md-4 col-md-offset-8 col-xs-12">
+        {% endif %}
+            <button type="submit" class="btn btn-block btn-primary btn-lg">
+                {% trans "Continue" %}
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}

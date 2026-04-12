@@ -6,6 +6,7 @@ on:
     paths:
       - Dockerfile.pretix
       - pretix-plugin-member-gate/**
+      - pretix-plugin-nss-profile/**
       - pretixcron.conf
   workflow_dispatch:
 

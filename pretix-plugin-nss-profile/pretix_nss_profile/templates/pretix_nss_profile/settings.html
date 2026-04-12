@@ -1,0 +1,24 @@
+{% extends "pretixcontrol/event/settings_base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+{% block title %}{% trans "NSS Member Profile" %}{% endblock %}
+{% block inside %}
+<h1>{% trans "NSS Member Profile" %}</h1>
+<p>{% blocktrans trimmed %}
+    When enabled, members who log in via YM SSO will be shown a profile confirmation
+    step during checkout. Their name, NSS number, grotto, membership expiration, and
+    home address will be pre-filled from their YM record and saved as order question
+    answers.
+{% endblocktrans %}</p>
+<form action="" method="post" class="form-horizontal">
+    {% csrf_token %}
+    {% bootstrap_form_errors form %}
+    {% bootstrap_field form.nss_profile_enabled layout="horizontal" %}
+    {% bootstrap_field form.nss_profile_provider_id layout="horizontal" %}
+    <div class="form-group submit-group">
+        <button type="submit" class="btn btn-primary btn-save">
+            {% trans "Save" %}
+        </button>
+    </div>
+</form>
+{% endblock %}

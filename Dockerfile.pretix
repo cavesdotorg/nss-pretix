@@ -2,5 +2,7 @@ FROM pretix/standalone:2026.3.1
 USER root
 COPY pretix-plugin-member-gate/ /tmp/plugin/
 RUN pip install --no-cache-dir /tmp/plugin/ && rm -rf /tmp/plugin/
+COPY pretix-plugin-nss-profile/ /tmp/profile-plugin/
+RUN pip install --no-cache-dir /tmp/profile-plugin/ && rm -rf /tmp/profile-plugin/
 COPY pretixcron.conf /etc/supervisord/pretixcron.conf
 USER pretixuser

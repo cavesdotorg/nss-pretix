@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pretix-plugin-nss-profile"
+version = "1.0.0"
+description = "Captures NSS member profile info during checkout"
+requires-python = ">=3.11"
+dependencies = ["redis>=4"]
+
+[project.entry-points."pretix.plugin"]
+pretix_nss_profile = "pretix_nss_profile:NssProfileApp"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pretix_nss_profile*"]
+
+[tool.setuptools.package-data]
+pretix_nss_profile = ["templates/**/*"]

@@ -165,7 +165,7 @@ def _ym_exchange_code(code: str) -> dict:
         log.error("YM Authenticate response: %s", r.text)
         raise ValueError("Missing SessionId or MemberId in YM response")
 
-    # Step 3: fetch the member's basic profile
+    # Step 3: fetch basic profile (email, name)
     r = requests.get(
         f"https://ws.yourmembership.com/Ams/{YM_CLIENT_ID}/Member/{member_id}/BasicMemberProfile",
         headers={"X-SS-ID": session_id, "Accept": "application/json"},
@@ -173,6 +173,16 @@ def _ym_exchange_code(code: str) -> dict:
     )
     r.raise_for_status()
     profile = r.json()
+    log.info("YM BasicMemberProfile for member %s fetched", member_id)
+
+    # Step 4: fetch full profile to discover extra fields (e.g. member number)
+    r2 = requests.get(
+        f"https://ws.yourmembership.com/Ams/{YM_CLIENT_ID}/Member/{member_id}/MemberProfile",
+        headers={"X-SS-ID": session_id, "Accept": "application/json"},
+        timeout=15,
+    )
+    full_profile = r2.json() if r2.ok else {}
+    log.info("YM MemberProfile for member %s fetched (ok=%s)", member_id, r2.ok)
 
     # YM field names vary — try the most common ones
     email = (
@@ -184,6 +194,58 @@ def _ym_exchange_code(code: str) -> dict:
     first = profile.get("FirstName") or profile.get("First") or ""
     last  = profile.get("LastName")  or profile.get("Last")  or ""
     name  = f"{first} {last}".strip() or f"Member {member_id}"
+
+    # Helper: pull a value from any CustomFieldValues list by FieldCode
+    def _custom_field(field_code):
+        for section in (
+            full_profile.get("ReadOnlyProperties") or {},
+            full_profile.get("PersonalInformation") or {},
+            full_profile.get("ProfessionalInformation") or {},
+        ):
+            for field in section.get("CustomFieldValues") or []:
+                if field.get("FieldCode") == field_code:
+                    values = field.get("Values") or []
+                    return values[0].get("Value", "") if values else ""
+        return ""
+
+    # Extract structured profile data and cache for checkout plugin
+    acct    = full_profile.get("AccountInformation") or {}
+    personal = full_profile.get("PersonalInformation") or {}
+
+    nss_number = acct.get("ConstituentID") or _custom_field("nssnumber") or ""
+    grotto     = _custom_field("GrottoAffiliation")
+
+    # Expiration: prefer the custom field date string; fall back to AccountInformation
+    exp_raw    = _custom_field("nssmemberexpiration") or acct.get("MembershipExpiresDate") or ""
+    expiration = exp_raw[:10] if exp_raw else ""  # trim to YYYY-MM-DD if ISO datetime
+
+    # Home address from PersonalInformation
+    addr_parts = []
+    line1 = personal.get("HomeAddressLine1", "")
+    line2 = personal.get("HomeAddressLine2", "")
+    city    = personal.get("HomeAddressCity", "")
+    state   = personal.get("HomeAddressLocation", "")
+    zipcode = personal.get("HomeAddressPostalCode", "")
+    country = personal.get("HomeAddressCountry", "")
+    if line1:
+        addr_parts.append(line1)
+    if line2:
+        addr_parts.append(line2)
+    city_state_zip = ", ".join(filter(None, [city, state, zipcode]))
+    if city_state_zip:
+        addr_parts.append(city_state_zip)
+    if country and country != "United States":
+        addr_parts.append(country)
+    address = "\n".join(addr_parts)
+
+    _store("ym_profile", str(member_id), {
+        "nss_number":    str(nss_number),
+        "nss_name":      name,
+        "nss_grotto":    str(grotto),
+        "nss_expiration": str(expiration),
+        "nss_address":   address,
+    }, ttl=86400)
+    log.info("Cached YM profile for member %s (nss=%s)", member_id, nss_number)
 
     return {"sub": str(member_id), "email": email, "name": name}
 
@@ -241,7 +303,7 @@ def auth():
         f"{YM_SITE_URL}/lock.aspx"
         f"?app_id={YM_APP_ID}"
         f"&redirect_uri={MY_CALLBACK}"
-        f"&scope=basic_profile"
+        f"&scope=basic_profile,full_profile"
     )
     return redirect(ym_auth_url)
 
@@ -398,7 +460,7 @@ def login():
         f"{YM_SITE_URL}/lock.aspx"
         f"?app_id={YM_APP_ID}"
         f"&redirect_uri={MY_CALLBACK}"
-        f"&scope=basic_profile"
+        f"&scope=basic_profile,full_profile"
     )
     return redirect(ym_auth_url)
 
