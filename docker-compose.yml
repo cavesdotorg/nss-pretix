@@ -13,7 +13,7 @@ services:
       - caddy_data:/data
 
   pretix:
-    image: ghcr.io/paulwalko/nss-pretix:2026.3.1-1
+    image: ghcr.io/paulwalko/nss-pretix:2026.3.1-2
     restart: unless-stopped
     labels:
       - wud.watch=true
@@ -59,9 +59,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /home/ubuntu/nss-pretix/docker-compose.yml:/workspace/docker-compose.yml
+      - wud_store:/store
     environment:
       WUD_WATCHER_LOCAL_CRON: "0 3 * * *"
-      WUD_STORE_REDIS_URI: "redis://valkey:6379/4"
       WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "false"
       WUD_TRIGGER_DOCKERCOMPOSE_MAIN_FILE: /workspace/docker-compose.yml
       WUD_TRIGGER_DOCKERCOMPOSE_MAIN_PRUNE: "true"
@@ -71,3 +71,4 @@ volumes:
   caddy_data:
   pretix_data:
   db_data:
+  wud_store:
