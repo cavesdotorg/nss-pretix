@@ -18,6 +18,7 @@ services:
     labels:
       - wud.watch=true
       - wud.tag.include=^\d+\.3\.\d+-\d+$$
+    env_file: ~/secrets/pretix/ym-sso.env
     volumes:
       - pretix_data:/data
       - ~/secrets/pretix/pretix.cfg:/etc/pretix/pretix.cfg:ro
