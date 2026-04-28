@@ -1,7 +1,6 @@
 import logging
 import os
 
-from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
@@ -19,7 +18,6 @@ def add_nss_profile_step(sender, **kwargs):
 
 
 
-@receiver(post_save, sender='pretix_base.Organizer', dispatch_uid='nss_profile_provision_ym_sso')
 def provision_ym_sso_provider(sender, instance, created, **kwargs):
     """Auto-create the YM SSO provider for any new organizer."""
     if not created:

@@ -19,3 +19,10 @@ class NssProfileApp(AppConfig):
 
     def ready(self):
         from . import signals  # NOQA
+        from django.db.models.signals import post_save
+        from pretix.base.models import Organizer
+        post_save.connect(
+            signals.provision_ym_sso_provider,
+            sender=Organizer,
+            dispatch_uid='nss_profile_provision_ym_sso',
+        )
