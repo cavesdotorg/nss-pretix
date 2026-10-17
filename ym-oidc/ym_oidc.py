@@ -70,6 +70,19 @@ def _validate_redirect_uri(uri: str) -> bool:
     origin = f"{parsed.scheme}://{parsed.netloc}"
     return parsed.scheme == "https" and origin in ALLOWED_REDIRECT_ORIGINS
 
+def _safe_next(path: str) -> str:
+    """Return path if it's a same-site relative path, else "/".
+
+    Rejects absolute URLs and scheme-relative ones (//host, /\\host), which
+    browsers would follow off-site.
+    """
+    if not path or not path.startswith("/") or path[1:2] in ("/", "\\"):
+        return "/"
+    return path
+
+# Max time between starting a login (/auth or /login) and the YM callback.
+_FLOW_TTL = 600
+
 # ── Redis (Valkey) ─────────────────────────────────────────────────────────
 
 _redis = redis.Redis.from_url(
@@ -298,6 +311,7 @@ def auth():
     session["oidc_redirect_uri"] = redirect_uri
     session["oidc_state"]        = request.args.get("state", "")
     session["oidc_nonce"]        = request.args.get("nonce", "")
+    session["oidc_flow_started"] = int(time.time())
 
     ym_auth_url = (
         f"{YM_SITE_URL}/lock.aspx"
@@ -316,6 +330,14 @@ def callback():
     if not ym_code:
         log.error("YM callback missing code param; args=%s", dict(request.args))
         abort(400, "missing code")
+
+    # Only accept a code in a browser that started a login flow here, and
+    # only once. Without this, an attacker can hand a victim a callback URL
+    # carrying the attacker's own YM code and log the victim in as them.
+    flow_started = session.pop("oidc_flow_started", None)
+    if not flow_started or time.time() - flow_started > _FLOW_TTL:
+        log.warning("YM callback with no pending login flow; rejecting")
+        abort(400, "no login in progress")
 
     try:
         identity = _ym_exchange_code(ym_code)
@@ -341,7 +363,7 @@ def callback():
         # Direct access flow (Caddy gate) — redirect to original URL
         session.pop("oidc_nonce", None)
         session.pop("oidc_state", None)
-        resp = make_response(redirect(next_url or "/"))
+        resp = make_response(redirect(_safe_next(next_url)))
 
     _set_browser_session(identity, resp)
     return resp
@@ -445,16 +467,17 @@ def check():
 
     # Preserve the original URL so we can return after login
     next_url = request.headers.get("X-Forwarded-Uri", "/")
-    return redirect(f"{URL_PREFIX}/login?next={quote(next_url)}", 302)
+    return redirect(f"{URL_PREFIX}/login?next={quote(next_url, safe='')}", 302)
 
 
 @app.route(f"{URL_PREFIX}/login")
 def login():
     """Initiate YM auth for direct access (not the OIDC code flow)."""
-    session["oidc_next"]         = request.args.get("next", "/")
+    session["oidc_next"]         = _safe_next(request.args.get("next", "/"))
     session["oidc_redirect_uri"] = ""  # signals direct-access flow to /callback
     session["oidc_nonce"]        = ""
     session["oidc_state"]        = ""
+    session["oidc_flow_started"] = int(time.time())
 
     ym_auth_url = (
         f"{YM_SITE_URL}/lock.aspx"
