@@ -1,4 +1,4 @@
-FROM pretix/standalone:2026.5.0
+FROM pretix/standalone:2026.8.0
 USER root
 COPY pretix-plugin-member-gate/ /tmp/plugin/
 RUN pip install --no-cache-dir /tmp/plugin/ && rm -rf /tmp/plugin/
