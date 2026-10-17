@@ -1,5 +1,10 @@
 # NSS AWS Hosted Pretix
-https://tickets.caves.org or something?
+https://tickets.caves.org
+
+# TODO
+1. Make YM auth available to all organizers to prevent having to set up the SSO provider manually for each one
+1. Test with VTC org
+1. Make reqs for convention
 
 ## Components
 https://docs.pretix.eu/self-hosting/installation/docker_smallscale/

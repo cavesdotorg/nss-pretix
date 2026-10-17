@@ -34,6 +34,7 @@ def provision_ym_sso_provider(sender, instance, created, **kwargs):
         )
         return
 
+    from i18nfield.strings import LazyI18nString
     from pretix.base.customersso.oidc import oidc_validate_and_complete_config
     from pretix.base.models.customers import CustomerSSOProvider
 
@@ -57,8 +58,8 @@ def provision_ym_sso_provider(sender, instance, created, **kwargs):
 
     CustomerSSOProvider.objects.create(
         organizer=instance,
-        name='YourMembership (NSS)',
-        button_label='Log in with NSS membership',
+        name=LazyI18nString({'en': 'YourMembership (NSS)'}),
+        button_label=LazyI18nString({'en': 'Log in with NSS membership'}),
         method=CustomerSSOProvider.METHOD_OIDC,
         is_active=True,
         configuration=config,
