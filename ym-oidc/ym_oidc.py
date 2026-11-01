@@ -21,6 +21,8 @@ Flow:
 import os
 import json
 import time
+import datetime as dt
+import html
 import hmac
 import secrets
 import logging
@@ -79,6 +81,103 @@ def _safe_next(path: str) -> str:
     if not path or not path.startswith("/") or path[1:2] in ("/", "\\"):
         return "/"
     return path
+
+# ── Current-membership check ──────────────────────────────────────────────
+# Same rules as cavesdotorg/nss-shop-member-sync (Shopify member pricing), so a
+# member gets the same answer in the shop and on tickets.caves.org.
+#   MEMBER_CHECK = off | log | enforce   (log: decide + log, never block)
+MEMBER_CHECK      = os.environ.get("MEMBER_CHECK", "log").strip().lower()
+MEMBER_GRACE_DAYS = int(os.environ.get("MEMBER_GRACE_DAYS", "0"))
+RENEW_URL         = os.environ.get("RENEW_URL", "https://caves.org/join-us/")
+ELIGIBLE_TYPES = {
+    "Regular", "Life", "FamilyRegular", "FamilyLife", "ConservationRegular",
+    "ConservationLife", "IntroRegular", "Landowner",
+}
+LIFE_TYPES = {"Life", "FamilyLife", "ConservationLife"}
+
+
+def _parse_date(v) -> dt.date | None:
+    """YM dates: ISO, /Date(ms)/ or M/D/YYYY. 0001-01-01 means unset."""
+    if not v:
+        return None
+    v = str(v).strip()
+    d = None
+    if v.startswith("/Date("):
+        try:
+            ms = int(v[6:].split(")")[0].split("-")[0].split("+")[0])
+            d = dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).date()
+        except ValueError:
+            return None
+    else:
+        try:
+            d = dt.date.fromisoformat(v[:10])
+        except ValueError:
+            try:
+                d = dt.datetime.strptime(v.split(" ")[0], "%m/%d/%Y").date()
+            except ValueError:
+                return None
+    return None if d.year < 1900 else d
+
+
+def _membership_status(full_profile: dict, custom_exp_raw: str,
+                       today: dt.date | None = None) -> tuple[bool, str, dict]:
+    """Return (is_current, reason, detail). detail holds no personal data."""
+    today  = today or dt.datetime.now(dt.timezone.utc).date()
+    acct   = full_profile.get("AccountInformation") or {}
+    admin  = full_profile.get("Administration") or {}
+    mtype  = acct.get("MemberTypeCode") or ""
+    exp    = _parse_date(acct.get("MembershipExpiresDate"))
+    custom = _parse_date(custom_exp_raw)
+    detail = {
+        "type": mtype or "-",
+        "expires_flag": acct.get("MembershipExpires"),
+        "custom_vs_account": ("missing" if custom is None or exp is None
+                              else "same" if custom == exp else "differ"),
+    }
+    if not full_profile:
+        return False, "no_profile", detail
+    if admin.get("Suspended"):
+        return False, "suspended", detail
+    if mtype not in ELIGIBLE_TYPES:
+        return False, "type_not_eligible", detail
+    if mtype in LIFE_TYPES:
+        return True, "life", detail
+    if exp is None:
+        return True, "no_expiry_date", detail          # as shop-sync: not lapsed
+    if exp < today - dt.timedelta(days=MEMBER_GRACE_DAYS):
+        return False, "expired", detail
+    return True, "current", detail
+
+
+_NOT_CURRENT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>NSS membership not current</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:36em;margin:4em auto;padding:0 1em;line-height:1.5}}
+a.b{{display:inline-block;padding:.5em 1em;border-radius:3px;background:#1d4f91;color:#fff;text-decoration:none}}</style>
+</head><body><h1>{title}</h1><p>{body}</p>
+<p><a class="b" href="{renew}">Join or renew</a> &nbsp; <a href="{back}">Back to tickets</a></p>
+</body></html>"""
+
+
+def _not_current_response(reason: str):
+    if reason == "no_profile":
+        title = "We couldn't check your membership"
+        body  = ("YourMembership didn't return your membership details. "
+                 "Please try again in a few minutes.")
+    else:
+        title = "Your NSS membership isn't current"
+        body  = ("Signing in with your NSS account is for current NSS members. "
+                 "Renew your membership, then sign in again. If you think this "
+                 "is wrong, contact the NSS Office.")
+    page = _NOT_CURRENT_HTML.format(
+        title=html.escape(title), body=html.escape(body),
+        renew=html.escape(RENEW_URL), back=html.escape(_issuer_origin + "/"))
+    resp = make_response(page, 403)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store"
+    resp.delete_cookie("ym_session")
+    return resp
+
 
 # Max time between starting a login (/auth or /login) and the YM callback.
 _FLOW_TTL = 600
@@ -139,7 +238,7 @@ def _get_browser_session() -> dict | None:
 def _ym_exchange_code(code: str) -> dict:
     """
     Run YM's 3-step flow: code → access token → session → profile.
-    Returns a dict with keys: sub, email, name.
+    Returns (identity, (is_current, reason)); identity has keys sub, email, name.
     """
     # Step 1: exchange authorization code for YM access token
     r = requests.post(
@@ -221,6 +320,17 @@ def _ym_exchange_code(code: str) -> dict:
                     return values[0].get("Value", "") if values else ""
         return ""
 
+    # Is the membership current? (decided here, enforced in callback())
+    is_current, reason, detail = _membership_status(
+        full_profile, _custom_field("nssmemberexpiration"))
+    log.info("member_check mode=%s result=%s reason=%s type=%s expires_flag=%s "
+             "custom_vs_account=%s", MEMBER_CHECK,
+             "allow" if is_current else "deny", reason, detail["type"],
+             detail["expires_flag"], detail["custom_vs_account"])
+    identity = {"sub": str(member_id), "email": email, "name": name}
+    if MEMBER_CHECK == "enforce" and not is_current:
+        return identity, (False, reason)   # don't cache a lapsed member's profile
+
     # Extract structured profile data and cache for checkout plugin
     acct    = full_profile.get("AccountInformation") or {}
     personal = full_profile.get("PersonalInformation") or {}
@@ -260,7 +370,7 @@ def _ym_exchange_code(code: str) -> dict:
     }, ttl=86400)
     log.info("Cached YM profile for member %s (nss=%s)", member_id, nss_number)
 
-    return {"sub": str(member_id), "email": email, "name": name}
+    return identity, (is_current, reason)
 
 
 # ── OIDC Discovery ─────────────────────────────────────────────────────────
@@ -340,10 +450,15 @@ def callback():
         abort(400, "no login in progress")
 
     try:
-        identity = _ym_exchange_code(ym_code)
+        identity, (is_current, reason) = _ym_exchange_code(ym_code)
     except Exception as exc:
         log.exception("YM auth exchange failed: %s", exc)
         abort(502, "upstream authentication error")
+
+    if MEMBER_CHECK == "enforce" and not is_current:
+        for k in ("oidc_redirect_uri", "oidc_next", "oidc_nonce", "oidc_state"):
+            session.pop(k, None)
+        return _not_current_response(reason)
 
     pretix_redirect_uri = session.pop("oidc_redirect_uri", "")
     next_url            = session.pop("oidc_next", "")
