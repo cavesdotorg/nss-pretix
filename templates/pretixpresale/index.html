@@ -3,10 +3,33 @@
 NSS override of pretix's default start page ("Hello! This is a self-hosted installation...").
 Copied over the core template in Dockerfile.pretix. The footer ("powered by ... pretix") comes from the
 base template and must stay (pretix licence).
+The <style> block below only applies to this page: it swaps pretix's purple for the caves.org red
+(#924444, hover #7f3b3b) and the lavender page background for the caves.org cream. Login, checkout and
+event pages keep pretix's own colours.
 {% endcomment %}
 {% block content %}
-    <div class="form-signin">
-        <h3>NSS Tickets</h3>
+    <style>
+        :root {
+            --pretix-brand-primary: #924444;
+            --pretix-brand-primary-darken-5: #863838;
+            --pretix-brand-primary-darken-10: #7f3b3b;
+            --pretix-brand-primary-darken-15: #7f3b3b;
+            --pretix-brand-primary-darken-17: #732f2f;
+            --pretix-brand-primary-darken-20: #732f2f;
+            --pretix-brand-primary-darken-30: #5c2626;
+            --pretix-brand-primary-shade-25: #6e3333;
+        }
+        body { background: #fffef3; }
+        .nss-landing .nss-logo { display: block; margin: 0 auto 20px; width: 200px; max-width: 100%; height: auto; }
+        .nss-landing h3 { text-align: center; }
+        .nss-landing .btn { border-radius: 3px; }
+    </style>
+    <div class="form-signin nss-landing">
+        <a href="https://caves.org/">
+            <img class="nss-logo" src="https://caves.org/wp-content/uploads/2021/07/NSS-logo_WithR_2014_150pxx78px.png"
+                 alt="National Speleological Society" width="200" height="105">
+        </a>
+        <h3>Welcome to the NSS Ticketing System</h3>
         <p>
             This is the ticketing site of the
             <a href="https://caves.org/">National Speleological Society (NSS)</a>,
