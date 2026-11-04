@@ -1,0 +1,20 @@
+{% extends "pretixcontrol/auth/base.html" %}
+{% comment %}
+NSS override of pretix's default start page ("Hello! This is a self-hosted installation...").
+Copied over the core template in Dockerfile.pretix. The footer ("powered by ... pretix") comes from the
+base template and must stay (pretix licence).
+{% endcomment %}
+{% block content %}
+    <div class="form-signin">
+        <h3>NSS Tickets</h3>
+        <p>
+            This is the ticketing site of the
+            <a href="https://caves.org/">National Speleological Society (NSS)</a>,
+            used for NSS courses and events.
+        </p>
+        <p>Looking for NSS events and courses?</p>
+        <p><a class="btn btn-primary btn-block" href="https://caves.org/calendar/">See NSS events and courses</a></p>
+        <p>Looking to log in?</p>
+        <p><a class="btn btn-default btn-block" href="{% url "control:auth.login" %}">Log in</a></p>
+    </div>
+{% endblock %}
