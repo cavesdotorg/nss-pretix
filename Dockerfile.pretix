@@ -5,4 +5,6 @@ RUN pip install --no-cache-dir /tmp/plugin/ && rm -rf /tmp/plugin/
 COPY pretix-plugin-nss-profile/ /tmp/profile-plugin/
 RUN pip install --no-cache-dir /tmp/profile-plugin/ && rm -rf /tmp/profile-plugin/
 COPY pretixcron.conf /etc/supervisord/pretixcron.conf
+# NSS start page for https://tickets.caves.org/ (replaces pretix's default "Hello!" page)
+COPY templates/pretixpresale/index.html /pretix/src/pretix/presale/templates/pretixpresale/index.html
 USER pretixuser
